@@ -5,8 +5,9 @@ import os
 
 config_file_path = "/TT_BLAZE_XTS/market_data_api/data/xts_login.ini"
 # os.makedirs(config_file_path, exist_ok = True)
-# config_write = ConfigParser()
+config_write = ConfigParser()
 config_read = ConfigParser()
+
 class market_data_api_functions:
     def __init__(self, 
                  url = "https://ttblaze.iifl.com", 
@@ -39,12 +40,19 @@ class market_data_api_functions:
                                          headers = header_client_config)
         if response_client_config.status_code == 200:
             client_config_response_data = response_client_config.json()
+            data = client_config_response_data.get('result') 
             # this might cause an error if so check the key name and change it
             self.exchangeSegment = client_config_response_data.get('exchangeSegments') 
+            config_write['exchangeSegments'] = {key: int(value) for key, value in data['exchangeSegments'].items()}
             self.xtsMessageCode = client_config_response_data.get('xtsMessageCode') 
+            config_write['xtsMessageCode'] = {key: int(value) for key, value in data['xtsMessageCode'].items()}
             self.publishFormat = client_config_response_data.get('publishFormat') 
-            self.broadCastMode = client_config_response_data.get('broadCastMode') 
+            config_write['publishFormat'] = {'format': ','.join(data['publishFormat'])}
+            self.broadCastMode = client_config_response_data.get('broadCastMode')
+            config_write['broadCastMode'] = {'format': ','.join(data['broadCastMode'])} 
             self.instrumentType = client_config_response_data.get('instrumentType') 
+            config_write['instrumentType'] = {key: str(value) for key, value in data['xtsMessageCode'].items()}
+
         else:
             print("CLIENT CONFIG REQUEST FAILED")
 
