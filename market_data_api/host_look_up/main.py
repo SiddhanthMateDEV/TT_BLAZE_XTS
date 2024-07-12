@@ -2,7 +2,7 @@ import requests as rqs
 import json 
 from configparser import ConfigParser
 
-class host_look_up:
+class market_data_api:
     def __init__(self, url = "https://ttblaze.iifl.com", 
                  access_password = "2021HostLookUpAccess",
                  version = "interactive_1.0.1",
