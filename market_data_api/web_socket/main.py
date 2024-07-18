@@ -1,8 +1,8 @@
-import socketio.client
 from config.product_config.main import ProductConfig
 from config.route_config.main import RouteConfig
 from subscribe.main import SubscribedInstruments
 from xts_message_codes.main import XtsMessageCodes
+from login.main import MarketDataApiCredentials
 
 import asyncio
 from urllib.parse import urljoin
@@ -14,7 +14,11 @@ import redis
 from itertools import product
 import aiohttp
 
-class WebSocket(ProductConfig,RouteConfig,SubscribedInstruments,XtsMessageCodes):
+class WebSocket(ProductConfig,
+                RouteConfig,
+                SubscribedInstruments,
+                XtsMessageCodes,
+                MarketDataApiCredentials):
     def __init__(self,
                  root_url = "https://ttblaze.iifl.com",
                  mongo_uri = "mongodb://localhost:27017",
@@ -26,9 +30,11 @@ class WebSocket(ProductConfig,RouteConfig,SubscribedInstruments,XtsMessageCodes)
                  intrument_id = None,
                  publish_format = "JSON",
                  broadcast_mode = "Full",
-                 socket_path = "/apimarketdata/socket.io"
+                 socket_path = "/apimarketdata/socket.io",
                  ):
-        if not all([root_url,token,db_name,coll_name,publish_format,broadcast_mode,]):
+        
+        if not all([root_url,token,db_name,coll_name,
+                    publish_format,broadcast_mode,]):
             raise ValueError("Fields required for initiating a websocket are empty or None")
 
         self.root_url = root_url
@@ -48,8 +54,12 @@ class WebSocket(ProductConfig,RouteConfig,SubscribedInstruments,XtsMessageCodes)
             raise ValueError("Empty Config fields for routes and products")
 
 
-    async def _request(self, route = None, method_req = None, 
-                       parameters = None, pool = None):
+    async def _request(self, 
+                       route = None, 
+                       method_req = None, 
+                       parameters = None, 
+                       pool = None):
+        
         params = parameters or {}
         try:
             uri = self._routes[str(route)].format(**params)
@@ -80,25 +90,32 @@ class WebSocket(ProductConfig,RouteConfig,SubscribedInstruments,XtsMessageCodes)
             except Exception as e:
                 raise ValueError("Error occured in _request function") from e
         
-    async def _post(self, route_param = None, params = None):
-        return await self._request(route = route_param, method_req = "POST", parameters = params, pool = None)
+    async def _post(self, route_param = None, 
+                        params = None):
+        return await self._request(route = route_param, 
+                                   method_req = "POST", 
+                                   parameters = params, 
+                                   pool = None)
     
-    async def send_subscription(self, instruments = None, xts_message_codes = None):
+    async def send_subscription(self, instruments = None, 
+                                xts_message_codes = None):
         try:
             responses = []
-            for instrument, code in product(instruments,xts_message_codes):
+            for instrument, code in product(instruments, xts_message_codes):
                 params_code = {
                     'instruments': instrument,
                     'xtsMessageCode': code,
                 }
-                response = await self._post(route_param = 'market.instruments.subscription', params = params_code)
+                response = await self._post(route_param = 'market.instruments.subscription', 
+                                            params = params_code)
                 responses.append(response)
             return responses
         except Exception as e:
             raise ValueError("Error in sending subscription") from e
         
     async def subscribe_to_codes(self):
-        response = await self.send_subscription(instruments = self.subscribe_payload, xts_message_codes = self.xts_message_codes)
+        response = await self.send_subscription(instruments = self.subscribe_payload, 
+                                                xts_message_codes = self.xts_message_codes)
         return response
 
 
@@ -106,6 +123,52 @@ class WebSocket(ProductConfig,RouteConfig,SubscribedInstruments,XtsMessageCodes)
         @self.socket.event
         def connect():
             print("Connected to the server")
+            self.event_loop.run_until_complete(self.subscribe_to_codes())
+        
+        @self.socket.event
+        def disconnect():
+            print("Server is disconnected")
+
+        @self.socket.on("1501-json-partial")
+        def on_touchline(data):
+            print("1501 touchline data: ",data)
+
+
+        @self.socket.on("1502-json-partial")
+        def on_market_data(data):
+            print("1502 market data: ",data)
+        
+        @self.socket.on("1505-json-partial")
+        def on_candle_data(data):
+            print("1502 candle data: ",data)
+
+        @self.socket.on("1507-json-partial")
+        def on_market_status_data(data):
+            print("1507 market status data: ",data)
+
+        @self.socket.on("1510-json-partial")
+        def on_open_interest(data):
+            print("1510 open interest data: ",data)
+        
+        @self.socket.on("1512-json-partial")
+        def on_ltp_data(data):
+            print("1512 LTP data: ",data)
+
+        @self.socket.on("1105-json-partial")
+        def on_instrument_change_data(data):
+            print("1105 instrument change data: ",data)
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
+
+
 
     
 

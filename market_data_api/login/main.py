@@ -22,7 +22,7 @@ version: Version of the host lookup API.
 secretKey: Secret key for market API authentication. 
 apiKey: API key for market API authentication. 
 '''
-class market_data_api_credentials:
+class MarketDataApiCredentials:
     def __init__(self, 
                  url = "https://ttblaze.iifl.com", 
                  access_password = "2021HostLookUpAccess",
@@ -37,13 +37,6 @@ class market_data_api_credentials:
         self.apiKey = apiKey
         self.auth_token = None
         self.token = None
-        self.exchangeSegment = None
-        self.xtsMessageCode = None
-        self.publishFormat = None
-        self.broadCastMode = None
-        self.instrumentType = None
-        self.index_list_cash_market = None
-        self.series_futures_options_list = None
 
     def host_look_up(self):
         HOST_LOOKUP_URL = fr"{self.url}:4000/HostLookUp"
@@ -66,7 +59,7 @@ class market_data_api_credentials:
 
     def login_market_api(self):
         config_read.read(str(config_file_path))
-        self.auth_token = config_read['AUTH']['unique_key']
+        self.auth_token = config_read['AUTH']['unique_key'] or self.host_look_up()
         payload_market_data = {
             "secretKey": self.secretKey,
             "appKey": self.apiKey,
