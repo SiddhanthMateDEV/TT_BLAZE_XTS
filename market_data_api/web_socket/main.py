@@ -13,6 +13,7 @@ from pymongo import MongoClient
 import redis 
 from itertools import product
 import aiohttp
+from threading import Timer
 
 class WebSocket(ProductConfig,
                 RouteConfig,
@@ -31,6 +32,11 @@ class WebSocket(ProductConfig,
                  publish_format = "JSON",
                  broadcast_mode = "Full",
                  socket_path = "/apimarketdata/socket.io",
+                 redis_port = 6379,
+                 redis_db = 0,
+                 redis_host = "localhost",
+                 redis_decode_response = True,
+                 redis_interval = 60,
                  ):
         
         if not all([root_url,token,db_name,coll_name,
@@ -47,6 +53,17 @@ class WebSocket(ProductConfig,
         self.socket_path = socket_path
         self.socket = socketio.Client()
         self.event_loop = asyncio.get_event_loop()
+
+        self.redis_port = redis_port
+        self.redis_db = redis_db
+        self.redis_host= redis_host
+        self.redis_decode_response = redis_decode_response
+        self.redis_interval = redis_interval
+
+        self.redis_client = redis.Redis(host = self.redis_host, 
+                                        port = self.redis_port, 
+                                        db = self.redis_db, 
+                                        decode_responses = self.redis_decode_response)
 
         super().__init__()
 
@@ -157,8 +174,17 @@ class WebSocket(ProductConfig,
         @self.socket.on("1105-json-partial")
         def on_instrument_change_data(data):
             print("1105 instrument change data: ",data)
-        
-        
+
+    def publish_to_redis(self, channel,data):
+        self.redis_client.publish(channel, json.dumps(data))
+
+    def schedule_redis_cleanup(self):
+        Timer(self.redis_interval,self.clean_up_redis).start()
+
+    def clean_up_redis(self):
+        self.redis_client.flushdb()
+        self.schedule_redis_cleanup()
+
         
         
         
