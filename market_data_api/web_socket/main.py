@@ -52,6 +52,7 @@ class WebSocket(ProductConfig,
                             redis_host = redis_host,
                             redis_port = redis_port,)
         
+
         if not all([root_url,token,db_name,coll_name,
                     publish_format,broadcast_mode,]):
             raise ValueError("Fields required for initiating a websocket are empty or None")
@@ -67,6 +68,12 @@ class WebSocket(ProductConfig,
         self.socket = socketio.Client()
         self.event_loop = asyncio.get_event_loop()
 
+        """
+        When the class is initialised this will be called once to get the 
+        unique_key to be used for the login request which is right after that
+        """
+        self.host_look_up()
+        self.login_market_api()
 
         super().__init__()
 
