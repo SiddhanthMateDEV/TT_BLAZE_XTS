@@ -3,6 +3,8 @@ from config.route_config.main import RouteConfig
 from subscribe.main import SubscribedInstruments
 from xts_message_codes.main import XtsMessageCodes
 from login.main import MarketDataApiCredentials
+from database_operations.mongo_writer.main import MongoWriter
+from database_operations.redis_handler.main import RedisHandler
 
 import asyncio
 from urllib.parse import urljoin
@@ -15,20 +17,20 @@ from itertools import product
 import aiohttp
 from threading import Timer
 
+
 class WebSocket(ProductConfig,
                 RouteConfig,
                 SubscribedInstruments,
                 XtsMessageCodes,
-                MarketDataApiCredentials):
+                MarketDataApiCredentials,
+                MongoWriter,
+                RedisHandler):
     def __init__(self,
                  root_url = "https://ttblaze.iifl.com",
                  mongo_uri = "mongodb://localhost:27017",
-                 user_id = None,
                  token = None,
-                 db_name = None,
+                 db_name = "XTS_WEBSOC_DATA",
                  coll_name = None,
-                 exchange_segment = None,
-                 intrument_id = None,
                  publish_format = "JSON",
                  broadcast_mode = "Full",
                  socket_path = "/apimarketdata/socket.io",
@@ -38,6 +40,17 @@ class WebSocket(ProductConfig,
                  redis_decode_response = True,
                  redis_interval = 60,
                  ):
+        
+        RedisHandler.__init__(redis_db = redis_db,
+                            redis_port = redis_port,
+                            redis_host = redis_host,
+                            redis_decode_response = redis_decode_response,
+                            redis_interval = redis_interval)
+        
+        MongoWriter.__init__(mongo_uri = mongo_uri,
+                            db_name = db_name,
+                            redis_host = redis_host,
+                            redis_port = redis_port,)
         
         if not all([root_url,token,db_name,coll_name,
                     publish_format,broadcast_mode,]):
@@ -54,16 +67,6 @@ class WebSocket(ProductConfig,
         self.socket = socketio.Client()
         self.event_loop = asyncio.get_event_loop()
 
-        self.redis_port = redis_port
-        self.redis_db = redis_db
-        self.redis_host= redis_host
-        self.redis_decode_response = redis_decode_response
-        self.redis_interval = redis_interval
-
-        self.redis_client = redis.Redis(host = self.redis_host, 
-                                        port = self.redis_port, 
-                                        db = self.redis_db, 
-                                        decode_responses = self.redis_decode_response)
 
         super().__init__()
 
@@ -78,11 +81,13 @@ class WebSocket(ProductConfig,
                        pool = None):
         
         params = parameters or {}
+
         try:
             uri = self._routes[str(route)].format(**params)
             url = urljoin(self.root_url, uri)
         except KeyError as e:
             raise ValueError(f"Key error for self._routes: {route}")
+        
         headers = {
             'Content-Type': 'application/json',
             'authorization': str(self.token)
@@ -103,10 +108,11 @@ class WebSocket(ProductConfig,
             except rqs.exceptions.RequestException as e:
                 raise ValueError(fr"HTTPS Error occured at _request function, Error Code: {e.response.status_code}")
             except json.JSONDecodeError as e:
-                raise ValueError("Failed to load JSON response") from e
+                raise ValueError("Failed to load JSON response at _request function")
             except Exception as e:
-                raise ValueError("Error occured in _request function") from e
+                raise ValueError("Error occured in _request function") 
         
+    
     async def _post(self, route_param = None, 
                         params = None):
         return await self._request(route = route_param, 
@@ -114,6 +120,7 @@ class WebSocket(ProductConfig,
                                    parameters = params, 
                                    pool = None)
     
+
     async def send_subscription(self, instruments = None, 
                                 xts_message_codes = None):
         try:
@@ -146,44 +153,65 @@ class WebSocket(ProductConfig,
         def disconnect():
             print("Server is disconnected")
 
+        # touchline data
         @self.socket.on("1501-json-partial")
         def on_touchline(data):
             print("1501 touchline data: ",data)
+            self.publish_to_redis("touchline-partial", data)
 
-
+        # market depth event
         @self.socket.on("1502-json-partial")
         def on_market_data(data):
             print("1502 market data: ",data)
+            self.publish_to_redis("market-depth-partial", data)
         
+        # candle data event
         @self.socket.on("1505-json-partial")
-        def on_candle_data(data):
-            print("1502 candle data: ",data)
+        def on_candle_data(data):  
+            print("1505 candle data: ",data)
+            self.publish_to_redis("candle-data-partial", data)
 
+        # market status event
         @self.socket.on("1507-json-partial")
         def on_market_status_data(data):
             print("1507 market status data: ",data)
+            self.publish_to_redis("market-status-partial", data)
 
+        # open interest event
         @self.socket.on("1510-json-partial")
         def on_open_interest(data):
             print("1510 open interest data: ",data)
+            self.publish_to_redis("open-interest-partial", data)
         
+        # ltp event
         @self.socket.on("1512-json-partial")
         def on_ltp_data(data):
             print("1512 LTP data: ",data)
+            self.publish_to_redis("ltp-partial", data)
 
+        # instrument property change event
         @self.socket.on("1105-json-partial")
         def on_instrument_change_data(data):
             print("1105 instrument change data: ",data)
+            self.publish_to_redis("instrument-change-partial", data)
 
-    def publish_to_redis(self, channel,data):
-        self.redis_client.publish(channel, json.dumps(data))
 
     def schedule_redis_cleanup(self):
         Timer(self.redis_interval,self.clean_up_redis).start()
 
+
     def clean_up_redis(self):
         self.redis_client.flushdb()
         self.schedule_redis_cleanup()
+
+
+    def start(self):
+        channels = [
+            "touchline_channel", "market_data_channel", "candle_data_channel",
+            "market_status_channel", "open_interest_channel", "ltp_data_channel",
+            "instrument_change_channel"
+        ]
+        self.start_sub(channels = channels)
 
         
         

@@ -19,7 +19,6 @@ The API provides real-time stock market data, instrument subscriptions, market d
 
 
 ## Documentation
-
 - [Documentation](https://ttblaze.iifl.com/doc/marketdata/)
 
 ## 🔗 Links
